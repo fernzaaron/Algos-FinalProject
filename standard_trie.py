@@ -21,7 +21,7 @@ class StandardTrie:
         node.is_end_of_word = True
 
     def search(self, prefix):
-        #find all words that start with prefix"""
+        """find all words that start with prefix"""
         node = self.root
         prefix = prefix.lower()
         
