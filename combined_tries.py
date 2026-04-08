@@ -1,10 +1,9 @@
-# STANDARD TRIE (PREFIX TREE)
+# text autocompletion system - standard trie and ternary trie
 
 class TrieNode:
     def __init__(self):
         self.children = {}
-        self.is_end_of_word = False
-
+        self.is_end = False
 
 class StandardTrie:
     def __init__(self):
@@ -12,293 +11,180 @@ class StandardTrie:
         self.freq = {}
 
     def insert(self, word):
-        """add a word to the trie"""
+        # insert word character by character
         node = self.root
         for char in word.lower():
             if char not in node.children:
                 node.children[char] = TrieNode()
             node = node.children[char]
-        node.is_end_of_word = True
+        node.is_end = True
 
     def search(self, prefix):
-        """find all words that start with prefix"""
+        # traverse to prefix, collect all words
         node = self.root
-        prefix = prefix.lower()
-        
-        # navigate to where the prefix ends
-        for char in prefix:
+        for char in prefix.lower():
             if char not in node.children:
                 return []
             node = node.children[char]
 
-        # collect all words from this node onwards
         words = []
+        def collect(n, word):
+            if n.is_end:
+                words.append(word)
+            for c, child in n.children.items():
+                collect(child, word + c)
         
-        def collect(cur_node, cur_word):
-            if cur_node.is_end_of_word:
-                words.append(cur_word)
-            for char, child in cur_node.children.items():
-                collect(child, cur_word + char)
-        
-        collect(node, prefix)
-        
-        # track frequency
+        collect(node, prefix.lower())
         for w in words:
             self.freq[w] = self.freq.get(w, 0) + 1
         return words
 
     def autocomplete(self, prefix):
-        """show suggestions for prefix"""
         suggestions = self.search(prefix)
-        # sort by how many times searched, then alphabetically
         suggestions.sort(key=lambda w: (-self.freq.get(w, 0), w))
-        
-        print(f"suggestions for '{prefix}':")
-        if suggestions:
-            for i, word in enumerate(suggestions, 1):
-                print(f"  {i}. {word.capitalize()} (searches: {self.freq.get(word, 0)})")
-        else:
-            print("  no suggestions")
-        return suggestions
+        print("suggestions for '{}':" .format(prefix))
+        for i, w in enumerate(suggestions, 1):
+            print("  {}. {}".format(i, w.capitalize()))
 
-# TERNARY SEARCH TRIE
 
 class TSTNode:
     def __init__(self, char):
-        self.char = char  # the actual character stored in this node
-        self.left = None  # smaller characters go here
-        self.mid = None   # next character in the word goes here
-        self.right = None  # larger characters go here
-        self.is_end_of_word = False
-
+        self.char = char
+        self.left = self.mid = self.right = None
+        self.is_end = False
 
 class TernaryTrie:
     def __init__(self):
-        self.root = None  # tree starts empty
-        self.freq = {}  # keep track of how often words get searched
+        self.root = None
+        self.freq = {}
 
     def insert(self, word):
-        """add word to the ternary trie"""
-        word = word.lower()
-        # start inserting from the root
-        self.root = self._insert_helper(self.root, word, 0)
+        # insert recursively based on char comparison
+        self.root = self._ins(self.root, word.lower(), 0)
 
-    def _insert_helper(self, node, word, idx):
-        """recursively insert word into tst"""
+    def _ins(self, node, word, idx):
         char = word[idx]
-        
-        # create new node if needed
         if node is None:
             node = TSTNode(char)
         
-        # compare with current character to decide which branch to go
         if char < node.char:
-            # this char comes before current char alphabetically
-            node.left = self._insert_helper(node.left, word, idx)
+            node.left = self._ins(node.left, word, idx)
         elif char > node.char:
-            # this char comes after current char alphabetically
-            node.right = self._insert_helper(node.right, word, idx)
+            node.right = self._ins(node.right, word, idx)
         else:
-            # character matches, now handle next character
             if idx + 1 < len(word):
-                # there's another character, go down middle branch
-                node.mid = self._insert_helper(node.mid, word, idx + 1)
+                node.mid = self._ins(node.mid, word, idx + 1)
             else:
-                # we're done with the word
-                node.is_end_of_word = True
-        
+                node.is_end = True
         return node
 
     def search(self, prefix):
-        """find all words starting with prefix"""
-        prefix = prefix.lower()
-        # navigate to where the prefix ends in the tree
-        node = self._find_prefix(self.root, prefix, 0)
-        
-        if node is None:
-            # prefix doesn't exist
+        # find node at prefix end, collect words from there
+        node = self._find(self.root, prefix.lower(), 0)
+        if not node:
             return []
         
-        # collect all words from this node
         words = []
-        def dfs(n, word, explore_siblings):
-            if n is None:
+        def dfs(n, word, explore):
+            if not n:
                 return
-            
-            # explore alternatives only for children, not the initial prefix node
-            if explore_siblings:
+            if explore:
                 dfs(n.left, word, True)
                 dfs(n.right, word, True)
-            
-            # add current node's character to build the word
-            full_word = word + n.char
-            
-            # check if this marks end of word
-            if n.is_end_of_word:
-                words.append(full_word)
-            
-            # traverse mid to next position  
-            dfs(n.mid, full_word, True)
+            full = word + n.char
+            if n.is_end:
+                words.append(full)
+            dfs(n.mid, full, True)
         
-        # start dfs: don't explore siblings of prefix node,
-        # only of its descendants
-        dfs(node, prefix[:-1], False)
-        
-        # update how many times each word has been searched
+        dfs(node, prefix.lower()[:-1], False)
         for w in words:
             self.freq[w] = self.freq.get(w, 0) + 1
         return words
 
-    def _find_prefix(self, node, prefix, idx):
-        """find node at end of prefix"""
-        if node is None:
+    def _find(self, node, prefix, idx):
+        # navigate to end of prefix
+        if not node:
             return None
-        
         char = prefix[idx]
-        
-        # navigate the tree based on character comparison
         if char < node.char:
-            return self._find_prefix(node.left, prefix, idx)
+            return self._find(node.left, prefix, idx)
         elif char > node.char:
-            return self._find_prefix(node.right, prefix, idx)
+            return self._find(node.right, prefix, idx)
         else:
-            # character matches
             if idx + 1 < len(prefix):
-                # more characters in prefix to find
-                return self._find_prefix(node.mid, prefix, idx + 1)
-            # found where prefix ends
+                return self._find(node.mid, prefix, idx + 1)
             return node
 
     def autocomplete(self, prefix):
-        """show suggestions for prefix"""
         suggestions = self.search(prefix)
-        # sort by popularity first, then alphabetical order
         suggestions.sort(key=lambda w: (-self.freq.get(w, 0), w))
-        
-        print(f"suggestions for '{prefix}':")
-        if suggestions:
-            for i, word in enumerate(suggestions, 1):
-                print(f"  {i}. {word.capitalize()} (searches: {self.freq.get(word, 0)})")
-        else:
-            print("  no suggestions")
-        return suggestions
-
-#DEMONSTRATIONS
-
-def demo_standard_trie():
-    print("=" * 50)
-    print("STANDARD TRIE")
-    print("=" * 50)
-    
-    trie = StandardTrie()
-    words = ["Sample", "Samplers", "Same", "Sampling", "Summer", "Sad"]
-    
-    print("\nadding words:", ", ".join(words))
-    # insert all the test words
-    for word in words:
-        trie.insert(word)
-    
-    print("\n" + "-" * 50)
-    print("autocomplete test:")
-    print("-" * 50)
-    # test autocomplete with "Sam" prefix
-    trie.autocomplete("Sam")
-    
-    # simulate some searches to build up frequency
-    print("\nsimulating searches...")
-    trie.search("sample")
-    trie.search("sample")
-    trie.search("same")
-    
-    # show how results changed based on search frequency
-    print("\nresults after searches:")
-    trie.autocomplete("Sam")
-    print("=" * 50)
+        print("suggestions for '{}':" .format(prefix))
+        for i, w in enumerate(suggestions, 1):
+            print("  {}. {}".format(i, w.capitalize()))
 
 
-def demo_ternary_trie():
-    print("=" * 50)
-    print("TERNARY SEARCH TRIE")
-    print("=" * 50)
+def demo():
+    print("\npart a: standard trie\n" + "-" * 40)
+    t1 = StandardTrie()
+    words = ["sample", "samplers", "same", "sampling", "summer", "sad"]
+    for w in words:
+        t1.insert(w)
+    print("inserted: {}".format(", ".join(words)))
+    print("\nwhen user types 'sam':")
+    t1.autocomplete("sam")
     
-    trie = TernaryTrie()
-    words = ["Sample", "Samplers", "Same", "Sampling", "Summer", "Sad"]
-    
-    print("\nadding words:", ", ".join(words))
-    # build the trie with test words
-    for word in words:
-        trie.insert(word)
-    
-    print("\n" + "-" * 50)
-    print("autocomplete test:")
-    print("-" * 50)
-    # test with "Sam" prefix
-    trie.autocomplete("Sam")
-    
-    # simulate user searches to build frequency data
-    print("\nsimulating searches...")
-    trie.search("sample")
-    trie.search("sample")
-    trie.search("same")
-    
-    # show how ranking changes based on search history
-    print("\nresults after searches:")
-    trie.autocomplete("Sam")
-    print("=" * 50)
+    print("\n\npart b: ternary trie\n" + "-" * 40)
+    t2 = TernaryTrie()
+    for w in words:
+        t2.insert(w)
+    print("inserted: {}".format(", ".join(words)))
+    print("\nwhen user types 'sam':")
+    t2.autocomplete("sam")
 
 
-def interactive_mode():
-    """Allow user to test insertion and search interactively"""
-    print("\n" + "=" * 50)
-    print("INTERACTIVE MODE")
-    print("=" * 50)
+def interactive():
+    print("\n" + "=" * 40)
+    print("test mode")
+    print("=" * 40)
     
-    choice = input("\nChoose trie type:\n1. Standard Trie\n2. Ternary Trie\n3. Both\nEnter choice (1-3): ").strip()
+    choice = input("\ntrie type?\n1. standard\n2. ternary\n3. both\n> ")
+    
+    # get words once for both tries
+    user_words = input("enter words (comma separated): ").strip()
+    words = [w.strip() for w in user_words.split(',')] if user_words else ["sample", "samplers", "same", "sampling", "summer", "sad"]
     
     if choice in ["1", "3"]:
-        print("\n--- STANDARD TRIE ---")
+        print("\n--- standard trie ---")
         trie = StandardTrie()
+        for w in words:
+            trie.insert(w)
+        print("loaded: {}".format(", ".join(words)))
         
-        # Insert initial words
-        words = ["Sample", "Samplers", "Same", "Sampling", "Summer", "Sad"]
-        for word in words:
-            trie.insert(word)
-        print(f"Inserted: {', '.join(words)}")
-        
-        # Interactive search
         while True:
-            prefix = input("\nEnter prefix to search (or 'quit' to exit): ").strip()
-            if prefix.lower() == 'quit':
+            prefix = input("\nsearch prefix (or 'q' to exit): ").strip()
+            if prefix.lower() == 'q':
                 break
-            trie.autocomplete(prefix)
+            if prefix:
+                trie.autocomplete(prefix)
     
     if choice in ["2", "3"]:
-        print("\n--- TERNARY TRIE ---")
+        if choice == "3":
+            print("\n" + "=" * 40)
+        print("\n--- ternary trie ---")
         trie = TernaryTrie()
+        for w in words:
+            trie.insert(w)
+        print("loaded: {}".format(", ".join(words)))
         
-        # Insert initial words
-        words = ["Sample", "Samplers", "Same", "Sampling", "Summer", "Sad"]
-        for word in words:
-            trie.insert(word)
-        print(f"Inserted: {', '.join(words)}")
-        
-        # Interactive search
         while True:
-            prefix = input("\nEnter prefix to search (or 'quit' to exit): ").strip()
-            if prefix.lower() == 'quit':
+            prefix = input("\nsearch prefix (or 'q' to exit): ").strip()
+            if prefix.lower() == 'q':
                 break
-            trie.autocomplete(prefix)
-
-
-def main():
-    demo_standard_trie()
-    print("\n\n")
-    demo_ternary_trie()
-    
-    # Ask if user wants interactive mode
-    if input("\n\nWant to test interactively? (y/n): ").strip().lower() == 'y':
-        interactive_mode()
+            if prefix:
+                trie.autocomplete(prefix)
 
 
 if __name__ == "__main__":
-    main()
+    demo()
+    if input("\ntest interactively? (y/n): ").lower() == 'y':
+        interactive()
